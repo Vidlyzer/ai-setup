@@ -11,61 +11,65 @@ if (-not $isAdmin) {
 # ===================================================================
 # STEP 1: RUNTIME (NODEJS, PYTHON, CLAUDE DESKTOP) & HOSTS
 # ===================================================================
-Write-Host "[1/4] Memasang Node.js, Python, dan Claude Desktop..."
+Write-Host "`n[1/4] Memasang Node.js, Python, dan Claude Desktop..." -ForegroundColor Cyan
 
 # 1.1 Daftarkan domain 9router ke hosts
 $hostsPath = "$env:WINDIR\System32\drivers\etc\hosts"
 if (Test-Path $hostsPath) {
     $hostsContent = Get-Content -Path $hostsPath -Raw -ErrorAction SilentlyContinue
     if ($hostsContent -notmatch "9router") {
+        Write-Host "-> Mendaftarkan domain 9router ke file hosts..." -ForegroundColor Gray
         Add-Content -Path $hostsPath -Value "`n127.0.0.1 9router" -Force
     }
 }
 
 # 1.2 Pasang Node.js LTS jika belum ada
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Start-Process winget -ArgumentList "install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent" -Wait -WindowStyle Hidden
+    Write-Host "-> Memasang Node.js LTS via winget..." -ForegroundColor Yellow
+    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+} else {
+    Write-Host "-> Node.js sudah terpasang." -ForegroundColor Green
 }
 
 # 1.3 Pasang Python 3.12 dengan PrependPath aktif jika belum ada
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Start-Process winget -ArgumentList "install Python.Python.3.12 --override `"/quiet PrependPath=1`" --accept-package-agreements --accept-source-agreements" -Wait -WindowStyle Hidden
+    Write-Host "-> Memasang Python 3.12 via winget..." -ForegroundColor Yellow
+    winget install Python.Python.3.12 --override "/quiet PrependPath=1" --accept-package-agreements --accept-source-agreements
+} else {
+    Write-Host "-> Python sudah terpasang." -ForegroundColor Green
 }
 
 # 1.4 Pasang Claude Desktop resmi Anthropic jika belum ada
 $claudeExePath = "$env:LOCALAPPDATA\AnthropicClaude\Claude.exe"
 $claudeAltPath = "$env:LOCALAPPDATA\Programs\Claude\Claude.exe"
 if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath)) {
-    # Coba pasang via winget Microsoft Store terlebih dahulu
-    try {
-        Start-Process winget -ArgumentList "install --id 9P6K58THS811 --source msstore --accept-package-agreements --accept-source-agreements --silent" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
-    } catch {}
+    Write-Host "-> Membuka link download resmi Claude Desktop di browser..." -ForegroundColor Yellow
+    $downloadUrl = "https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect"
+    Start-Process $downloadUrl
 
-    # Jika winget belum memasangnya, buka link download resmi via browser (agar lolos dari proteksi Cloudflare)
-    if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath) -and -not (Get-Process Claude -ErrorAction SilentlyContinue)) {
-        $downloadUrl = "https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect"
-        Start-Process $downloadUrl
-
-        # Deteksi otomatis file installer di folder Downloads
-        $downloadsFolder = "$env:USERPROFILE\Downloads"
-        $maxWait = 60
-        $waited = 0
-        while (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath) -and -not (Get-Process Claude -ErrorAction SilentlyContinue) -and ($waited -lt $maxWait)) {
-            $installer = Get-ChildItem -Path $downloadsFolder -Filter "*Claude*Setup*.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($installer -and (Test-Path $installer.FullName)) {
-                try {
-                    $testStream = [System.IO.File]::Open($installer.FullName, 'Open', 'Read', 'None')
-                    $testStream.Close()
-                    Start-Process $installer.FullName -ArgumentList "--silent" -Wait
-                    break
-                } catch {
-                    # File masih sedang diunduh oleh browser
-                }
+    Write-Host "-> Menunggu file installer selesai terunduh di folder Downloads..." -ForegroundColor Yellow
+    $downloadsFolder = "$env:USERPROFILE\Downloads"
+    $maxWait = 120
+    $waited = 0
+    while (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath) -and -not (Get-Process Claude -ErrorAction SilentlyContinue) -and ($waited -lt $maxWait)) {
+        $installer = Get-ChildItem -Path $downloadsFolder -Filter "*Claude*Setup*.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($installer -and (Test-Path $installer.FullName)) {
+            try {
+                $testStream = [System.IO.File]::Open($installer.FullName, 'Open', 'Read', 'None')
+                $testStream.Close()
+                Write-Host "-> Memasang $($installer.Name)..." -ForegroundColor Yellow
+                Start-Process $installer.FullName -ArgumentList "--silent" -Wait
+                Write-Host "-> Claude Desktop berhasil dipasang!" -ForegroundColor Green
+                break
+            } catch {
+                # File masih sedang diunduh oleh browser
             }
-            Start-Sleep -Seconds 2
-            $waited += 2
         }
+        Start-Sleep -Seconds 2
+        $waited += 2
     }
+} else {
+    Write-Host "-> Claude Desktop sudah terpasang." -ForegroundColor Green
 }
 
 # 1.5 Daftarkan PATH permanen ke Windows Environment & sesi aktif
@@ -89,10 +93,11 @@ while (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 # ===================================================================
 # STEP 2: INSTALL 9ROUTER & JALANKAN SERVICE
 # ===================================================================
-Write-Host "[2/4] Menyiapkan layanan 9Router..."
+Write-Host "`n[2/4] Menyiapkan layanan 9Router..." -ForegroundColor Cyan
 
-# Pasang 9router secara global
-Start-Process cmd -ArgumentList "/c npm install -g 9router" -Wait -WindowStyle Hidden
+# Pasang 9router secara global dengan output terlihat
+Write-Host "-> Memasang 9Router via npm..." -ForegroundColor Yellow
+cmd.exe /c npm install -g 9router
 
 # Daftarkan ke Startup folder via shortcut .lnk
 $startupFolder = [Environment]::GetFolderPath("Startup")
@@ -110,6 +115,7 @@ $dashShortcut.TargetPath = "http://9router:20128/dashboard"
 $dashShortcut.Save()
 
 # Jalankan 9Router sekarang di background
+Write-Host "-> Menjalankan background service 9Router..." -ForegroundColor Gray
 Start-Process powershell -ArgumentList "-WindowStyle Hidden -Command `"9router --no-browser`"" -WindowStyle Hidden
 
 # Polling TCP port 20128 sampai siap

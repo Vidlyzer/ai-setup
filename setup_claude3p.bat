@@ -13,27 +13,35 @@ if %errorlevel% neq 0 (
 :: ===================================================================
 :: STEP 1: RUNTIME (NODEJS, PYTHON, CLAUDE DESKTOP) & HOSTS
 :: ===================================================================
+echo.
 echo [1/4] Memasang Node.js, Python, dan Claude Desktop...
 
 set "HOSTS_FILE=%WINDIR%\System32\drivers\etc\hosts"
 findstr /C:"9router" "%HOSTS_FILE%" >nul 2>&1
 if %errorlevel% neq 0 echo 127.0.0.1 9router >> "%HOSTS_FILE%"
 
+echo -^> Memeriksa dan memasang Node.js LTS...
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent >nul 2>&1
+    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+) else (
+    echo    Node.js sudah terpasang.
 )
 
+echo -^> Memeriksa dan memasang Python 3.12...
 where python >nul 2>&1
 if %errorlevel% neq 0 (
-    winget install Python.Python.3.12 --override "/quiet PrependPath=1" --accept-package-agreements --accept-source-agreements >nul 2>&1
+    winget install Python.Python.3.12 --override "/quiet PrependPath=1" --accept-package-agreements --accept-source-agreements
+) else (
+    echo    Python sudah terpasang.
 )
 
+echo -^> Memeriksa Claude Desktop...
 if not exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" if not exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
-    winget install --id 9P6K58THS811 --source msstore --accept-package-agreements --accept-source-agreements --silent >nul 2>&1
-    if not exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" if not exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
-        start https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect
-    )
+    echo    Membuka link download resmi Claude Desktop di browser...
+    start https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect
+) else (
+    echo    Claude Desktop sudah terpasang.
 )
 
 :: Refresh & Daftarkan PATH secara permanen ke Windows Environment
@@ -59,8 +67,10 @@ if %errorlevel% neq 0 (
 :: ===================================================================
 :: STEP 2: INSTALL 9ROUTER & VERIFIKASI SERVICE AKTIF
 :: ===================================================================
+echo.
 echo [2/4] Menyiapkan layanan 9Router...
-call npm install -g 9router >nul 2>&1
+echo -^> Memasang 9Router via npm...
+call npm install -g 9router
 
 :: Daftarkan ke Startup Windows tanpa file .vbs (Anti-Block Smart App Control)
 powershell -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\9Router.lnk');$s.TargetPath='powershell.exe';$s.Arguments='-WindowStyle Hidden -Command \"9router --no-browser\"';$s.WindowStyle=7;$s.Save()" >nul 2>&1
