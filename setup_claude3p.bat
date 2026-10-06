@@ -69,24 +69,42 @@ if %errorlevel% neq 0 (
 :: ===================================================================
 echo.
 echo [2/4] Menyiapkan layanan 9Router...
-echo -^> Memasang 9Router via npm...
-call npm install -g 9router
+where 9router >nul 2>&1
+if %errorlevel% neq 0 (
+    echo -^> Memasang 9Router via npm...
+    call npm install -g 9router
+) else (
+    echo    9Router sudah terpasang via npm (dilewati).
+)
 
 :: Daftarkan ke Startup Windows tanpa file .vbs (Anti-Block Smart App Control)
 powershell -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\9Router.lnk');$s.TargetPath='powershell.exe';$s.Arguments='-WindowStyle Hidden -Command \"9router --no-browser\"';$s.WindowStyle=7;$s.Save()" >nul 2>&1
 
 powershell -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%USERPROFILE%\Desktop\9Router Dashboard.url');$s.TargetPath='http://9router:20128/dashboard';$s.Save()" >nul 2>&1
 
-:: Jalankan 9Router hening di background
-powershell -WindowStyle Hidden -Command "Start-Process cmd -ArgumentList '/c 9router --no-browser' -WindowStyle Hidden"
-
-:: Pengecekan Ketat Step 2: Polling TCP port 20128 sampai benar-benar aktif
-powershell -Command "while ($true) { try { $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', 20128); $tcp.Close(); break } catch { Start-Sleep -Seconds 1 } }"
+:: Cek apakah service 9Router sudah aktif di port 20128
+powershell -Command "try { $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', 20128); $tcp.Close(); exit 0 } catch { exit 1 }"
+if %errorlevel% equ 0 (
+    echo    Service 9Router sudah aktif di port 20128 (dilewati).
+) else (
+    echo -^> Menjalankan background service 9Router...
+    powershell -WindowStyle Hidden -Command "Start-Process cmd -ArgumentList '/c 9router --no-browser' -WindowStyle Hidden"
+    powershell -Command "while ($true) { try { $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', 20128); $tcp.Close(); break } catch { Start-Sleep -Seconds 1 } }"
+)
 
 :: ===================================================================
 :: STEP 3: LOGIN ANTIGRAVITY & VERIFIKASI KONEKSI AKTIF
 :: ===================================================================
-echo [3/4] Silakan klik '+ Add' di browser untuk login Google...
+echo.
+echo [3/4] Memeriksa akun Google Antigravity...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers').connections; $ag = $conns | Where-Object { $_.provider -eq 'antigravity' }; if ($ag) { exit 0 } else { exit 1 } } catch { exit 1 }"
+if %errorlevel% equ 0 (
+    echo    Akun Google Antigravity sudah terhubung (dilewati).
+    goto STEP_4
+)
+
+echo    Silakan klik '+ Add' di browser untuk login Google...
 start http://9router:20128/dashboard/providers/antigravity
 
 :: Pengecekan Ketat Step 3: Validasi akun Google ke API 9Router sebelum lanjut
@@ -99,9 +117,11 @@ if %errorlevel% neq 0 (
     goto CHECK_LOGIN
 )
 
+:STEP_4
 :: ===================================================================
 :: STEP 4: CONFIG CLAUDE 3P & COMBO ROUND ROBIN
 :: ===================================================================
+echo.
 echo [4/4] Menerapkan konfigurasi ke Claude Desktop...
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -125,12 +145,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "  Set-Content -Path \"$roamingDir\claude_desktop_config.json\" -Value '{\"deploymentMode\": \"3p\"}';" ^
     "}"
 
-if exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" (
-    start "" "%LOCALAPPDATA%\AnthropicClaude\Claude.exe"
-) else if exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
-    start "" "%LOCALAPPDATA%\Programs\Claude\Claude.exe"
+tasklist /fi "imagename eq Claude.exe" 2>nul | findstr /i "Claude.exe" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo -^> Claude Desktop sudah berjalan (dilewati).
 ) else (
-    start claude: >nul 2>&1
+    echo -^> Meluncurkan Claude Desktop...
+    if exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" (
+        start "" "%LOCALAPPDATA%\AnthropicClaude\Claude.exe"
+    ) else if exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
+        start "" "%LOCALAPPDATA%\Programs\Claude\Claude.exe"
+    ) else (
+        start claude: >nul 2>&1
+    )
 )
 
 echo SELESAI !

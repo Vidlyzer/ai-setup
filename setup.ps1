@@ -28,7 +28,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "-> Memasang Node.js LTS via winget..." -ForegroundColor Yellow
     winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
 } else {
-    Write-Host "-> Node.js sudah terpasang." -ForegroundColor Green
+    Write-Host "-> Node.js sudah terpasang (dilewati)." -ForegroundColor Green
 }
 
 # 1.3 Pasang Python 3.12 dengan PrependPath aktif jika belum ada
@@ -36,13 +36,15 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host "-> Memasang Python 3.12 via winget..." -ForegroundColor Yellow
     winget install Python.Python.3.12 --override "/quiet PrependPath=1" --accept-package-agreements --accept-source-agreements
 } else {
-    Write-Host "-> Python sudah terpasang." -ForegroundColor Green
+    Write-Host "-> Python sudah terpasang (dilewati)." -ForegroundColor Green
 }
 
 # 1.4 Pasang Claude Desktop resmi Anthropic jika belum ada
 $claudeExePath = "$env:LOCALAPPDATA\AnthropicClaude\Claude.exe"
 $claudeAltPath = "$env:LOCALAPPDATA\Programs\Claude\Claude.exe"
-if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath)) {
+$isClaudeInstalled = (Test-Path $claudeExePath) -or (Test-Path $claudeAltPath) -or (Get-Process Claude -ErrorAction SilentlyContinue) -or (Get-Command claude -ErrorAction SilentlyContinue)
+
+if (-not $isClaudeInstalled) {
     Write-Host "-> Membuka link download resmi Claude Desktop di browser..." -ForegroundColor Yellow
     $downloadUrl = "https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect"
     Start-Process $downloadUrl
@@ -69,7 +71,7 @@ if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath)) {
         $waited += 2
     }
 } else {
-    Write-Host "-> Claude Desktop sudah terpasang." -ForegroundColor Green
+    Write-Host "-> Claude Desktop sudah terpasang (dilewati)." -ForegroundColor Green
 }
 
 # 1.5 Daftarkan PATH permanen ke Windows Environment & sesi aktif
@@ -95,9 +97,13 @@ while (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 # ===================================================================
 Write-Host "`n[2/4] Menyiapkan layanan 9Router..." -ForegroundColor Cyan
 
-# Pasang 9router secara global dengan output terlihat
-Write-Host "-> Memasang 9Router via npm..." -ForegroundColor Yellow
-cmd.exe /c npm install -g 9router
+# 2.1 Pasang 9router jika belum terpasang
+if (-not (Get-Command 9router -ErrorAction SilentlyContinue)) {
+    Write-Host "-> Memasang 9Router via npm..." -ForegroundColor Yellow
+    cmd.exe /c npm install -g 9router
+} else {
+    Write-Host "-> 9Router sudah terpasang via npm (dilewati)." -ForegroundColor Green
+}
 
 # Daftarkan ke Startup folder via shortcut .lnk
 $startupFolder = [Environment]::GetFolderPath("Startup")
@@ -114,36 +120,57 @@ $dashShortcut = $wsh.CreateShortcut("$desktopFolder\9Router Dashboard.url")
 $dashShortcut.TargetPath = "http://9router:20128/dashboard"
 $dashShortcut.Save()
 
-# Jalankan 9Router sekarang di background
-Write-Host "-> Menjalankan background service 9Router..." -ForegroundColor Gray
-Start-Process powershell -ArgumentList "-WindowStyle Hidden -Command `"9router --no-browser`"" -WindowStyle Hidden
+# 2.2 Periksa apakah 9Router sudah berjalan di port 20128
+$isPortOpen = $false
+try {
+    $tcpCheck = New-Object Net.Sockets.TcpClient("127.0.0.1", 20128)
+    $tcpCheck.Close()
+    $isPortOpen = $true
+} catch {}
 
-# Polling TCP port 20128 sampai siap
-while ($true) {
-    try {
-        $tcp = New-Object Net.Sockets.TcpClient("127.0.0.1", 20128)
-        $tcp.Close()
-        break
-    } catch {
-        Start-Sleep -Seconds 1
+if ($isPortOpen) {
+    Write-Host "-> Service 9Router sudah aktif di port 20128 (dilewati)." -ForegroundColor Green
+} else {
+    Write-Host "-> Menjalankan background service 9Router..." -ForegroundColor Gray
+    Start-Process powershell -ArgumentList "-WindowStyle Hidden -Command `"9router --no-browser`"" -WindowStyle Hidden
+    while ($true) {
+        try {
+            $tcp = New-Object Net.Sockets.TcpClient("127.0.0.1", 20128)
+            $tcp.Close()
+            break
+        } catch {
+            Start-Sleep -Seconds 1
+        }
     }
 }
 
 # ===================================================================
 # STEP 3: LOGIN ANTIGRAVITY & VERIFIKASI KONEKSI
 # ===================================================================
-Write-Host "[3/4] Silakan klik '+ Add' di browser untuk login Google..."
-Start-Process "http://9router:20128/dashboard/providers/antigravity"
+Write-Host "`n[3/4] Memeriksa akun Google Antigravity..." -ForegroundColor Cyan
 
-# Validasi akun Google ke API 9Router sebelum lanjut
-while ($true) {
-    Read-Host "Tekan ENTER setelah selesai login di browser"
-    try {
-        $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
-        $ag = $conns | Where-Object { $_.provider -eq "antigravity" }
-        if ($ag) { break }
-    } catch {}
-    Write-Host "[PERINGATAN] Akun Google belum terhubung. Silakan login terlebih dahulu di browser." -ForegroundColor Yellow
+# Periksa apakah sudah pernah login sebelumnya
+$isAgConnected = $false
+try {
+    $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
+    $ag = $conns | Where-Object { $_.provider -eq "antigravity" }
+    if ($ag) { $isAgConnected = $true }
+} catch {}
+
+if ($isAgConnected) {
+    Write-Host "-> Akun Google Antigravity sudah terhubung (dilewati)." -ForegroundColor Green
+} else {
+    Write-Host "-> Silakan klik '+ Add' di browser untuk login Google..." -ForegroundColor Yellow
+    Start-Process "http://9router:20128/dashboard/providers/antigravity"
+    while ($true) {
+        Read-Host "Tekan ENTER setelah selesai login di browser"
+        try {
+            $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
+            $ag = $conns | Where-Object { $_.provider -eq "antigravity" }
+            if ($ag) { break }
+        } catch {}
+        Write-Host "[PERINGATAN] Akun Google belum terhubung. Silakan login terlebih dahulu di browser." -ForegroundColor Yellow
+    }
 }
 
 # ===================================================================
@@ -201,13 +228,18 @@ try {
     Set-Content -Path "$roamingDir\claude_desktop_config.json" -Value '{"deploymentMode": "3p"}'
 }
 
-# 4.4 Luncurkan Claude Desktop
-if (Test-Path $claudeExePath) {
-    Start-Process $claudeExePath
-} elseif (Test-Path $claudeAltPath) {
-    Start-Process $claudeAltPath
+# 4.4 Luncurkan Claude Desktop jika belum berjalan
+if (Get-Process Claude -ErrorAction SilentlyContinue) {
+    Write-Host "-> Claude Desktop sudah berjalan (dilewati)." -ForegroundColor Green
 } else {
-    try { Start-Process "claude:" } catch {}
+    Write-Host "-> Meluncurkan Claude Desktop..." -ForegroundColor Cyan
+    if (Test-Path $claudeExePath) {
+        Start-Process $claudeExePath
+    } elseif (Test-Path $claudeAltPath) {
+        Start-Process $claudeAltPath
+    } else {
+        try { Start-Process "claude:" } catch {}
+    }
 }
 
 Write-Host "SELESAI !" -ForegroundColor Green
