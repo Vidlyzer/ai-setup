@@ -144,6 +144,13 @@ if ($isPortOpen) {
     }
 }
 
+# 2.3 Bypass form login dashboard (default password 123456)
+try {
+    $webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    Invoke-RestMethod -Uri "http://localhost:20128/api/auth/login" -Method POST -Body '{"password":"123456"}' -ContentType "application/json" -WebSession $webSession -ErrorAction SilentlyContinue | Out-Null
+    Invoke-RestMethod -Uri "http://localhost:20128/api/settings" -Method PATCH -Body '{"requireLogin":false}' -ContentType "application/json" -WebSession $webSession -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+
 # ===================================================================
 # STEP 3: LOGIN ANTIGRAVITY & VERIFIKASI KONEKSI
 # ===================================================================

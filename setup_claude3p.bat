@@ -92,6 +92,12 @@ if %errorlevel% equ 0 (
     powershell -Command "while ($true) { try { $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', 20128); $tcp.Close(); break } catch { Start-Sleep -Seconds 1 } }"
 )
 
+:: Bypass form login dashboard (default password 123456)
+powershell -NoProfile -Command ^
+    "$ws = New-Object Microsoft.PowerShell.Commands.WebRequestSession;" ^
+    "try { Invoke-RestMethod -Uri 'http://localhost:20128/api/auth/login' -Method POST -Body '{\"password\":\"123456\"}' -ContentType 'application/json' -WebSession $ws | Out-Null } catch {};" ^
+    "try { Invoke-RestMethod -Uri 'http://localhost:20128/api/settings' -Method PATCH -Body '{\"requireLogin\":false}' -ContentType 'application/json' -WebSession $ws | Out-Null } catch {}" >nul 2>&1
+
 :: ===================================================================
 :: STEP 3: LOGIN ANTIGRAVITY & VERIFIKASI KONEKSI AKTIF
 :: ===================================================================
