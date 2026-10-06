@@ -29,10 +29,11 @@ if %errorlevel% neq 0 (
     winget install Python.Python.3.12 --override "/quiet PrependPath=1" --accept-package-agreements --accept-source-agreements >nul 2>&1
 )
 
-if not exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" (
-    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://claude.ai/api/desktop/win32/x64/setup/latest/redirect' -OutFile '%TEMP%\ClaudeSetup.exe'" >nul 2>&1
-    start /wait "" "%TEMP%\ClaudeSetup.exe" --silent
-    del "%TEMP%\ClaudeSetup.exe" >nul 2>&1
+if not exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" if not exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
+    winget install --id 9P6K58THS811 --source msstore --accept-package-agreements --accept-source-agreements --silent >nul 2>&1
+    if not exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" if not exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
+        start https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect
+    )
 )
 
 :: Refresh & Daftarkan PATH secara permanen ke Windows Environment
@@ -116,6 +117,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 if exist "%LOCALAPPDATA%\AnthropicClaude\Claude.exe" (
     start "" "%LOCALAPPDATA%\AnthropicClaude\Claude.exe"
+) else if exist "%LOCALAPPDATA%\Programs\Claude\Claude.exe" (
+    start "" "%LOCALAPPDATA%\Programs\Claude\Claude.exe"
+) else (
+    start claude: >nul 2>&1
 )
 
 echo SELESAI !

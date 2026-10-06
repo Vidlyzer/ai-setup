@@ -34,12 +34,38 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 
 # 1.4 Pasang Claude Desktop resmi Anthropic jika belum ada
 $claudeExePath = "$env:LOCALAPPDATA\AnthropicClaude\Claude.exe"
-if (-not (Test-Path $claudeExePath)) {
-    $installerPath = "$env:TEMP\ClaudeSetup.exe"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri "https://claude.ai/api/desktop/win32/x64/setup/latest/redirect" -OutFile $installerPath -UseBasicParsing
-    Start-Process $installerPath -ArgumentList "--silent" -Wait
-    Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+$claudeAltPath = "$env:LOCALAPPDATA\Programs\Claude\Claude.exe"
+if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath)) {
+    # Coba pasang via winget Microsoft Store terlebih dahulu
+    try {
+        Start-Process winget -ArgumentList "install --id 9P6K58THS811 --source msstore --accept-package-agreements --accept-source-agreements --silent" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+    } catch {}
+
+    # Jika winget belum memasangnya, buka link download resmi via browser (agar lolos dari proteksi Cloudflare)
+    if (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath) -and -not (Get-Process Claude -ErrorAction SilentlyContinue)) {
+        $downloadUrl = "https://claude.ai/redirect/claudeai.v1.f1f00150-1fbd-467c-adfc-2cbccaa0f85f/api/desktop/win32/x64/setup/latest/redirect"
+        Start-Process $downloadUrl
+
+        # Deteksi otomatis file installer di folder Downloads
+        $downloadsFolder = "$env:USERPROFILE\Downloads"
+        $maxWait = 60
+        $waited = 0
+        while (-not (Test-Path $claudeExePath) -and -not (Test-Path $claudeAltPath) -and -not (Get-Process Claude -ErrorAction SilentlyContinue) -and ($waited -lt $maxWait)) {
+            $installer = Get-ChildItem -Path $downloadsFolder -Filter "*Claude*Setup*.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($installer -and (Test-Path $installer.FullName)) {
+                try {
+                    $testStream = [System.IO.File]::Open($installer.FullName, 'Open', 'Read', 'None')
+                    $testStream.Close()
+                    Start-Process $installer.FullName -ArgumentList "--silent" -Wait
+                    break
+                } catch {
+                    # File masih sedang diunduh oleh browser
+                }
+            }
+            Start-Sleep -Seconds 2
+            $waited += 2
+        }
+    }
 }
 
 # 1.5 Daftarkan PATH permanen ke Windows Environment & sesi aktif
@@ -172,6 +198,10 @@ try {
 # 4.4 Luncurkan Claude Desktop
 if (Test-Path $claudeExePath) {
     Start-Process $claudeExePath
+} elseif (Test-Path $claudeAltPath) {
+    Start-Process $claudeAltPath
+} else {
+    try { Start-Process "claude:" } catch {}
 }
 
 Write-Host "SELESAI !" -ForegroundColor Green
