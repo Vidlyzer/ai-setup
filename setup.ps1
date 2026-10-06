@@ -145,37 +145,51 @@ if ($isPortOpen) {
 }
 
 # 2.3 Bypass form login dashboard (default password 123456)
+$webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 try {
-    $webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     Invoke-RestMethod -Uri "http://localhost:20128/api/auth/login" -Method POST -Body '{"password":"123456"}' -ContentType "application/json" -WebSession $webSession -ErrorAction SilentlyContinue | Out-Null
     Invoke-RestMethod -Uri "http://localhost:20128/api/settings" -Method PATCH -Body '{"requireLogin":false}' -ContentType "application/json" -WebSession $webSession -ErrorAction SilentlyContinue | Out-Null
 } catch {}
+
+# Fungsi pengecekan status Antigravity (API + Session + Database)
+function Test-AntigravityConnected {
+    try {
+        $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -WebSession $webSession -ErrorAction Stop).connections
+        if ($conns | Where-Object { $_.provider -eq "antigravity" }) { return $true }
+    } catch {}
+
+    try {
+        $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
+        if ($conns | Where-Object { $_.provider -eq "antigravity" }) { return $true }
+    } catch {}
+
+    $dbCandidates = @(
+        "$env:APPDATA\9router\db\data.sqlite",
+        "$env:USERPROFILE\.9router\db\data.sqlite"
+    )
+    foreach ($db in $dbCandidates) {
+        if (Test-Path $db) {
+            $hasAg = Select-String -Path $db -Pattern "antigravity" -SimpleMatch -Quiet -ErrorAction SilentlyContinue
+            if ($hasAg) { return $true }
+        }
+    }
+
+    return $false
+}
 
 # ===================================================================
 # STEP 3: LOGIN ANTIGRAVITY & VERIFIKASI KONEKSI
 # ===================================================================
 Write-Host "`n[3/4] Memeriksa akun Google Antigravity..." -ForegroundColor Cyan
 
-# Periksa apakah sudah pernah login sebelumnya
-$isAgConnected = $false
-try {
-    $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
-    $ag = $conns | Where-Object { $_.provider -eq "antigravity" }
-    if ($ag) { $isAgConnected = $true }
-} catch {}
-
-if ($isAgConnected) {
+if (Test-AntigravityConnected) {
     Write-Host "-> Akun Google Antigravity sudah terhubung (dilewati)." -ForegroundColor Green
 } else {
     Write-Host "-> Silakan klik '+ Add' di browser untuk login Google..." -ForegroundColor Yellow
     Start-Process "http://9router:20128/dashboard/providers/antigravity"
     while ($true) {
         Read-Host "Tekan ENTER setelah selesai login di browser"
-        try {
-            $conns = (Invoke-RestMethod -Uri "http://localhost:20128/api/providers" -ErrorAction Stop).connections
-            $ag = $conns | Where-Object { $_.provider -eq "antigravity" }
-            if ($ag) { break }
-        } catch {}
+        if (Test-AntigravityConnected) { break }
         Write-Host "[PERINGATAN] Akun Google belum terhubung. Silakan login terlebih dahulu di browser." -ForegroundColor Yellow
     }
 }
@@ -194,7 +208,7 @@ $comboBody = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri "$baseUrl/api/combos" -Method POST -Body $comboBody -ContentType "application/json" -ErrorAction Stop | Out-Null
+    Invoke-RestMethod -Uri "$baseUrl/api/combos" -Method POST -Body $comboBody -ContentType "application/json" -WebSession $webSession -ErrorAction Stop | Out-Null
 } catch {}
 
 # 4.2 Set strategi Round Robin
@@ -205,7 +219,7 @@ $settingsPatch = @{
 } | ConvertTo-Json -Depth 5
 
 try {
-    Invoke-RestMethod -Uri "$baseUrl/api/settings" -Method PATCH -Body $settingsPatch -ContentType "application/json" -ErrorAction Stop | Out-Null
+    Invoke-RestMethod -Uri "$baseUrl/api/settings" -Method PATCH -Body $settingsPatch -ContentType "application/json" -WebSession $webSession -ErrorAction Stop | Out-Null
 } catch {}
 
 # 4.3 Terapkan ke Claude Desktop 3P
@@ -216,7 +230,7 @@ $coworkBody = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri "$baseUrl/api/cli-tools/cowork-settings" -Method POST -Body $coworkBody -ContentType "application/json" -ErrorAction Stop | Out-Null
+    Invoke-RestMethod -Uri "$baseUrl/api/cli-tools/cowork-settings" -Method POST -Body $coworkBody -ContentType "application/json" -WebSession $webSession -ErrorAction Stop | Out-Null
 } catch {
     # Fallback jika API gagal: tulis file config secara manual
     $uuid = [guid]::NewGuid().ToString()

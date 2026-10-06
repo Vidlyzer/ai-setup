@@ -104,7 +104,12 @@ powershell -NoProfile -Command ^
 echo.
 echo [3/4] Memeriksa akun Google Antigravity...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers').connections; $ag = $conns | Where-Object { $_.provider -eq 'antigravity' }; if ($ag) { exit 0 } else { exit 1 } } catch { exit 1 }"
+    "$ws = New-Object Microsoft.PowerShell.Commands.WebRequestSession;" ^
+    "try { Invoke-RestMethod -Uri 'http://localhost:20128/api/auth/login' -Method POST -Body '{\"password\":\"123456\"}' -ContentType 'application/json' -WebSession $ws | Out-Null } catch {};" ^
+    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers' -WebSession $ws).connections; if ($conns | Where-Object { $_.provider -eq 'antigravity' }) { exit 0 } } catch {};" ^
+    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers').connections; if ($conns | Where-Object { $_.provider -eq 'antigravity' }) { exit 0 } } catch {};" ^
+    "$dbs = @(\"$env:APPDATA\9router\db\data.sqlite\", \"$env:USERPROFILE\.9router\db\data.sqlite\");" ^
+    "foreach ($db in $dbs) { if (Test-Path $db) { if (Select-String -Path $db -Pattern 'antigravity' -SimpleMatch -Quiet -ErrorAction SilentlyContinue) { exit 0 } } }; exit 1"
 if %errorlevel% equ 0 (
     echo    Akun Google Antigravity sudah terhubung (dilewati).
     goto STEP_4
@@ -113,11 +118,16 @@ if %errorlevel% equ 0 (
 echo    Silakan klik '+ Add' di browser untuk login Google...
 start http://9router:20128/dashboard/providers/antigravity
 
-:: Pengecekan Ketat Step 3: Validasi akun Google ke API 9Router sebelum lanjut
+:: Pengecekan Ketat Step 3: Validasi akun Google ke API & DB 9Router sebelum lanjut
 :CHECK_LOGIN
 set /p DUMMY="Tekan ENTER setelah selesai login di browser..."
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers').connections; $ag = $conns | Where-Object { $_.provider -eq 'antigravity' }; if ($ag) { exit 0 } else { exit 1 } } catch { exit 1 }"
+    "$ws = New-Object Microsoft.PowerShell.Commands.WebRequestSession;" ^
+    "try { Invoke-RestMethod -Uri 'http://localhost:20128/api/auth/login' -Method POST -Body '{\"password\":\"123456\"}' -ContentType 'application/json' -WebSession $ws | Out-Null } catch {};" ^
+    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers' -WebSession $ws).connections; if ($conns | Where-Object { $_.provider -eq 'antigravity' }) { exit 0 } } catch {};" ^
+    "try { $conns = (Invoke-RestMethod -Uri 'http://localhost:20128/api/providers').connections; if ($conns | Where-Object { $_.provider -eq 'antigravity' }) { exit 0 } } catch {};" ^
+    "$dbs = @(\"$env:APPDATA\9router\db\data.sqlite\", \"$env:USERPROFILE\.9router\db\data.sqlite\");" ^
+    "foreach ($db in $dbs) { if (Test-Path $db) { if (Select-String -Path $db -Pattern 'antigravity' -SimpleMatch -Quiet -ErrorAction SilentlyContinue) { exit 0 } } }; exit 1"
 if %errorlevel% neq 0 (
     echo [PERINGATAN] Akun Google belum terhubung. Silakan login terlebih dahulu di browser.
     goto CHECK_LOGIN
